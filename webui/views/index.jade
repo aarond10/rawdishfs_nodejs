@@ -1,0 +1,16 @@
+h1= title
+include includes/stats
+hr
+span Download:
+form(method="get", action="/download")
+  input(type="text", name="filename")
+  button(type="submit") Download
+hr
+span Upload:
+form(action="/upload", enctype="multipart/form-data", method="post")
+  input(type="file", name="upload")
+  button(type="submit") Upload
+hr
+a(href="/status") System Status
+span  | 
+a(href="/data") Browse Data
