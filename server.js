@@ -86,7 +86,7 @@
       async.forEachSeries(paths, function initSingleStore(path, callback) {
 	var bs = new blockstore.BlockStore(path, function(err) {
           if (!err)
-            blockstores[bs.id()] = bs;
+            blockstores[bs.id] = bs;
           callback(err);
         });
       }, function(err) {
