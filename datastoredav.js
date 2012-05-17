@@ -5,6 +5,8 @@ var jsDAV_Directory   = require("jsDAV/lib/directory").jsDAV_Directory;
 var jsDAV_iCollection = require("jsDAV/lib/iCollection").jsDAV_iCollection;
 var jsDAV_iQuota      = require("jsDAV/lib/iQuota").jsDAV_iQuota;
 var jsDAV_iFile       = require("jsDAV/lib/iFile").jsDAV_iFile;
+var jsDAV_Tree        = require("jsDAV/lib/tree").jsDAV_Tree;
+var util              = require("jsDAV/lib/util");
 
 function jsDAV_DataStore_Node(name) {
     this.name = name;
@@ -137,7 +139,26 @@ exports.jsDAV_DataStore_File = jsDAV_DataStore_File;
   };
 }).call(jsDAV_DataStore_File.prototype = new jsDAV_DataStore_Node());
 
-exports.CreateRootDir = function(datastore, key) {
-  return new jsDAV_DataStore_Directory(datastore, key, "root");
+function jsDAV_DataStore_Tree(datastore, key) {
+  this.datastore = datastore;
+  this.key = key;
 }
+
+exports.jsDAV_DataStore_File = jsDAV_DataStore_File;
+(function() {
+  this.getNodeForPath = function(path, cbfstree) {
+    var node = new jsDAV_DataStore_Directory(datastore, key, 'root');
+    var splitpath = util.splitPath(path);
+
+    async.forEachSerial(splitpath, function(name, callback) {
+      node = node.getChild(name, callback);
+    }, function(err) {
+      if (err)
+        return cbfstree(new Exc.jsDAV_Exception_FileNotFound("File at location " + path + " not found"));
+        cbfstree(err);
+      else
+        return cbfstree(null, node);
+    }
+  };
+}).call(jsDAV_DataStore_Tree.prototype = new jsDAV_Tree());
 
