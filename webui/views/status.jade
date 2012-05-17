@@ -5,7 +5,7 @@ div.blockstore_list
   - each blockstore in stats.blockstores
     div.obar
       div.ibar(style="width:"+(400*blockstore._size/blockstore._capacity)+"px")
-      div.label= blockstore._id
+      div.label= blockstore.id
 
 include includes/stats
 hr
@@ -14,6 +14,6 @@ h3 Peers (#{stats.num_peers})
   div(class="peer "+peer.state)
     b #{peer.host}:#{peer.port}
 h3 Debugging
-  p Random BlockStore: #{random_block._id}
+  p Random BlockStore: #{random_block.id}
   p TODO: Add a blockstore selection function (could be random)
   p TODO: Add event-driven code to update the size of remote blockstores.
