@@ -74,7 +74,7 @@
           self._peers[key].client = client;
           self._peers[key].conn = conn;
           for (var i in client.blockstore)
-            blockstore_ids.push(client.blockstore[i]._id);
+            blockstore_ids.push(client.blockstore[i].id);
           self.emit('ready', self._peers[key]);
         });
         conn.on('drop', function() { 
@@ -93,22 +93,62 @@
   // Returns a local or remote BlockStore for storing an arbitrary block.
   MeshNode.prototype.SelectBlockStore = function() {
     var blockstores = this.blockstores();
-    var num_blockstores = 0;
+    var free_space = 0;
     for (var i in blockstores)
-      num_blockstores++;
-    var ix = parseInt(Math.random()*num_blockstores);
+      free_space += blockstores[i]._size;
+    var ix = parseInt(Math.random()*free_space);
     
     for (var i in blockstores) {
-      if (!ix)
+      if (ix <= 0)
         return blockstores[i];
-      ix--;
+      ix -= blockstores[i]._size;
     }
 
     console.error("Whoops. This shouldn't be possible.");
     return null;
   };
 
-  
+  // Looks after coding and distribution of data blocks, maintenance of those
+  // data blocks, chaining of blocks, HMAC verification, encryption, etc. 
+  // Basically provides a unified view of storage backed by a set of BlockStores.
+  function DataStore(mesh, rootdir_key) {
+    this.get = function(key, callback) {
+      var result = null;
+      var result_blockstore = null;
+      async.forEachLimit(mesh.blockstores(), 32, function(blockstore, callback) {
+        blockstore.get(key, function(err, data) {
+          if (data) {
+            result = data;
+            result_blockstore = blockstore;
+            callback(true); // force forEachLimit to stop.
+          } else {
+            callback();
+          }
+        });
+      }, function(err) {
+        // err is not important.
+        if (result)
+          callback(null, result, result_blockstore);
+        else
+          callback("File not found.");
+      });
+    };
 
+    this.store = function(key, data, callback) {
+      this.get(key, function(err, data, blockstore) {
+        // TODO: Deal with race condition here between get and store.
+        if (err) {
+          mesh.SelectBlockStore().store(key, data, callback);
+        } else {
+          blockstore.store(key, data, callback);
+        }
+      });
+    };
+
+    // Returns a jsDAV compatible directory object.
+    this.getRootDir = function(callback) {
+      callback(null, DataStoreDAV.CreateRootDir(this, rootdir_key));
+    }
+  }
 })();
 
