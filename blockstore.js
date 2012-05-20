@@ -57,7 +57,7 @@
     // Returns the per-user quota levels for this BlockStore.
     this.quota = function(callback) { callback(null, $quota); }
 
-    // Returns the size of the blockstore.
+    // Returns the size of the blockstore (i.e. its capacity).
     this.size = function(callback) { callback(null, BLOCK_STORE_SIZE); }
 
     // Returns an object that can be used to read/write to the store but only
@@ -66,11 +66,13 @@
       if (!uid_regexp.test(uid))
         return console.warning("User attempted to setuid with invalid ID (", uid, ")");
 
+      // Copy the BlockStore ID from our parent for identification purposes
+      this.id = self.id;
       // Returns the current uid of this blockstore.
-      this.getuid = function(callback) { callback(uid); }
+      this.getuid = function(callback) { callback(null, uid); }
       // Returns the per-user quota levels for this BlockStore.
       this.quota = self.quota.bind(self);
-      // Returns the size of the blockstore.
+      // Returns the size of the blockstore (i.e. its capacity).
       this.size = self.size.bind(self);
       // Retrieve a block.
       this.get = function(key, callback) {

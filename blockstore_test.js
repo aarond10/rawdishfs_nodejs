@@ -7,9 +7,21 @@ exports.testQuota = function(test) {
   var bs = new blockstore.BlockStore(TESTDATA_PATH, 
   function Loaded(err) {
     bs.quota(function GotQuota(err, quota) {
+      test.equal(null, err);
       test.equal(11, quota['usera']);
       test.equal(21, quota['userb']);
       test.equal(31, quota['userc']);
+      test.done();
+    });
+  });
+};
+
+exports.testSize = function(test) {
+  var bs = new blockstore.BlockStore(TESTDATA_PATH, 
+  function Loaded(err) {
+    bs.size(function GotSize(err, size) {
+      test.equal(null, err);
+      test.equal(128 << 20, size);  // hard coded for now.
       test.done();
     });
   });
@@ -48,6 +60,14 @@ exports.testGetStoreQuotaAndOverwrite = function(test) {
     var accessor = new bs.accessor('usera');
     async.waterfall([
       function(callback) {
+        accessor.getuid(callback);
+      },
+      function(uid, callback) {
+        test.equal('usera', uid);
+        accessor.size(callback);
+      },
+      function(size, callback) {
+        test.equal(128 << 20, size);  // hard coded size for now.
         accessor.get('0123', callback);
       },
       function(data, callback) {
@@ -65,8 +85,8 @@ exports.testGetStoreQuotaAndOverwrite = function(test) {
         accessor.quota(callback);
       }
     ], function(err, quota) {
-      test.equal(olddata.length, quota['usera']);
       test.ok(!err);
+      test.equal(olddata.length, quota['usera']);
       test.done();
     });
   });
