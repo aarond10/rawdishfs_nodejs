@@ -78,7 +78,7 @@ exports.testGetStoreQuotaAndOverwrite = function(test) {
         accessor.quota(callback);
       },
       function(quota, callback) {
-        test.equal(newdata.length, quota['usera']);
+        test.equal(newdata.length, quota);
         accessor.store('0123', olddata, callback);
       },
       function(callback) {
@@ -86,7 +86,7 @@ exports.testGetStoreQuotaAndOverwrite = function(test) {
       }
     ], function(err, quota) {
       test.ok(!err);
-      test.equal(olddata.length, quota['usera']);
+      test.equal(olddata.length, quota);
       test.done();
     });
   });

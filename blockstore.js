@@ -70,9 +70,10 @@
       this.id = self.id;
       // Returns the current uid of this blockstore.
       this.getuid = function(callback) { callback(null, uid); }
-      // Returns the per-user quota levels for this BlockStore.
-      this.quota = self.quota.bind(self);
-      // Returns the size of the blockstore (i.e. its capacity).
+      // Returns the quota for this BlockStore and uid.
+      this.quota = function(callback) { self.quota(function(err, quota) { callback(err, quota[uid]); }); }
+      // Returns the size of the blockstore (i.e. its capacity) 
+      // TODO: Should we subtract other users data so we can be essentially ignorant of it?
       this.size = self.size.bind(self);
       // Retrieve a block.
       this.get = function(key, callback) {
