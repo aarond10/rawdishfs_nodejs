@@ -1,21 +1,26 @@
 (function() {
-  var async = require('./libs/async');
+  var async = require('async');
   var crypto = require('crypto');
   var fs = require('fs');
-  var mkdirp = require('./libs/mkdirp');
-  var util = require('util');
+  var mkdirp = require('mkdirp');
 
   module.exports = {BlockStore:BlockStore};
 
   var MAX_BLOCK_SIZE = 16384; // 16KB max size per block.
   var BLOCK_STORE_SIZE = 128 << 20; // 128MB
   var OVERWRITE_MODE = true;  // true if its OK for a block to be overwritten once committed to disk.
+  var SCANNER_INTERVAL = 100;  // time between incremental file scans in milliseconds
+
+  // We assume blocks keys are hex hashes
+  var key_regexp = /[a-fA-F0-9]+/;
+  var uid_regexp = /[a-zA-Z0-9][a-zA-Z0-9_\.\-]*/;
+  var file_regexp = /([a-zA-Z0-9][a-zA-Z0-9_\.\-]*)\$([a-fA-F0-9]+)/;  // matches uid and key.
 
   // Simple disk-backed key/value store with fixed maximum size.
   function BlockStore(path, callback) {
-    this._size = 0;
-    this._capacity = BLOCK_STORE_SIZE;
+    var $quota = {};  // per-user quotas.
     var self = this;
+
     async.waterfall([
       function CreateDirectory(callback) {
         mkdirp.mkdirp(path, callback);
@@ -37,116 +42,103 @@
       },
       function SumExistingData(files, callback) {
         async.forEach(files, function addSizes(file, callback) {
-          if (file.substr(0,1) == '.')
+          var match = file_regexp.exec(file);
+          if (!match || match.length != 3)
             return callback();
           fs.stat(path + '/' + file, function statResult(err, stats) {
-            console.log(self._size, stats.size);
             if (stats && stats.isFile())
-              self._size += stats.size;
+              $quota[match[1]] = ($quota[match[1]] || 0) + stats.size
             callback(err);
           });
         }, callback);
-      }
+      },
     ], callback);
 
-    // Returns the current size of BlockStore in bytes (used capacity)
-    this.GetSize = function(callback) {
-      callback(undefined, self._size);
-    }
-      
-    // Retrieve a block. Key should be a hexadecimal value but this is not checked.
-    this.get = function(key, callback) {
-      fs.readFile(path + '/' + key, callback);
-    }
+    // Returns the per-user quota levels for this BlockStore.
+    this.quota = function(callback) { callback(null, $quota); }
 
-    // Store a block. Key should be a hexadecimal value but this is not checked.
-    this.store = function(key, block, callback) {
-      // Hack to force data into string form.
-      if (block.length === undefined) 
-        block = '' + block;
-      if (block.length > MAX_BLOCK_SIZE) {
-	return callback("Attempted to write oversized block (" + block.length + " > " + MAX_BLOCK_SIZE + ")");
-      }
-      if (self._size + block.length > self._capacity) {
-	return callback("Store failed. BlockStore is full.");
-      }
-      fs.stat(path + '/' + key, function statResult(err, stats) {
-        if (stats) {
-          if (OVERWRITE_MODE)
-            self._size -= stats.size;
-          else
-            return callback("Refusing to overwrite existing block: " + key);
-        }
-        self._size += block.length;
-        fs.writeFile(path + '/' + key, block, function writeDone(err) {
-	  if (err)
-	    self._size -= block.length;
-	  callback(err);
-        });
-      });
-    }
-  }
+    // Returns the size of the blockstore.
+    this.size = function(callback) { callback(null, BLOCK_STORE_SIZE); }
 
-  // Extends BlockStore by creating a shim for remote users to use,
-  // adding owner metadata and exporting per-user usage.
-  function MetaBlockStore(path, callback) {
-    BlockStore.call(this, path, callback);
+    // Returns an object that can be used to read/write to the store but only
+    // under a single user ID.
+    this.accessor = function(uid) {
+      if (!uid_regexp.test(uid))
+        return console.warning("User attempted to setuid with invalid ID (", uid, ")");
 
-    var self = this;
-    var storeFunc = this.store;
-    var getFunc = this.get;
-
-    // Returns an object that looks like a plain old BlockStore but is 
-    // actually backed by a MetaBlockStore and transparently sets
-    // owner data in the background for stores and prevents gets of other
-    // users data.
-    this.GetUserBlockStore = function(owner) {
-      this._size = self._size;
-      this.id = self.id;
-      this._capacity = self._capacity;
-
-      this.GetSize = function(callback) {
-        this._size = self._size;
-        callback(null, this._size);
-      };
-
-      this.store = function(key, block, callback) {
-	if (key.find(".") != -1)
-	  return callback("Invalid key name: " + key);
-	async.waterfall([
-	  function(callback) {
-	    self.get(key + ".owner", function(err, data) {
-              if (data && data.toString() != owner)
-                return callback("Permission denied."); // file exists and owned by someone else.
-              callback(null); // potential small race condition here?
-            });
-	  },
-	  function(callback) {
-	    self.store(key + ".owner", owner, callback);
-	  },
-	  function(callback) {
-	    self.store(key, block, callback);
-	  },
-	], callback);
-      };
-
+      // Returns the current uid of this blockstore.
+      this.getuid = function(callback) { callback(uid); }
+      // Returns the per-user quota levels for this BlockStore.
+      this.quota = self.quota.bind(self);
+      // Returns the size of the blockstore.
+      this.size = self.size.bind(self);
+      // Retrieve a block.
       this.get = function(key, callback) {
-	if (key.find(".") != -1)
-	  return callback("Invalid key name: " + key);
-	async.waterfall([
-	  function(callback) {
-	    self.get(key + ".owner", callback);
-	  },
-	  function(data, callback) {
-	    fileowner = data.toString();
-            if (fileowner != owner)
-              callback("Permission denied.");
-            else
-	      self.get(key, callback);
-	  },
-	], callback);
-      };
+        if (!key_regexp.test(key))
+          return callback("Invalid key: " + key);
+        fs.readFile(path + '/' + uid + '$' + key, callback);
+      }
+      // Store a block.
+      this.store = function(key, block, callback) {
+	if (!key_regexp.test(key))
+	  return callback("Invalid key: " + key);
+	if (typeof block.length === undefined)  // Hack to force data into string form.
+	  block = '' + block;
+	if (block.length > MAX_BLOCK_SIZE) {
+	  return callback("Attempted to write oversized block (" + block.length + " > " + MAX_BLOCK_SIZE + ")");
+	}
+	var size = 0;
+	for (var i in $quota) size += $quota[i];
+	if (size + block.length > BLOCK_STORE_SIZE) {
+	  return callback("Store failed. BlockStore is full.");
+	}
+	$quota[uid] = ($quota[uid] || 0) + block.length;  // Add quota first, remove if we get errors. Avoids race issues.
+	fs.stat(path + '/' + uid + '$' + key, function statResult(err, stats) {
+	  if (stats) {
+	    if (OVERWRITE_MODE)
+	      $quota[uid] -= stats.size;
+	    else
+	      return callback("Refusing to overwrite existing block: " + key);
+	  }
+	  fs.writeFile(path + '/' + uid + '$' + key, block, function writeDone(err) {
+	    if (err)
+	      $quota[uid] -= block.length;
+	    callback(err);
+	  });
+	});
+      }
+    }
+
+    // Kicks off an incremental scan of the blockstore, calling the provided
+    // callback function for every block of data in the store.
+    this.scanner = function(callback) {
+      var handle = null;
+      var curFiles = [];
+
+      function RunScan() {
+	var filename = null;
+	while (filename !== undefined && !file_regexp.test(filename)) 
+	  filename = curFiles.shift();
+	if (filename) {
+	  fs.readFile(path + '/' + filename, function ReadFile(err, data) {
+	    var match = file_regexp.exec(filename);
+	    handle = setTimeout(RunScan, SCANNER_INTERVAL);
+	    callback(err, match[2], data, match[1]);
+	  });
+	} else {
+	  fs.readdir(path, function GotDir(err, files) {
+	    if (!err)
+	      curFiles = files;
+	    handle = setTimeout(RunScan, SCANNER_INTERVAL);
+	  });
+	}
+      }
+      handle = setTimeout(RunScan, SCANNER_INTERVAL);
+
+      // Stops this incremental scanner.
+      this.stop = function() {
+        clearTimeout(handle);
+      }
     }
   }
-  util.inherits(MetaBlockStore, BlockStore);
 })();
