@@ -11,8 +11,7 @@
   var OVERWRITE_MODE = true;  // true if its OK for a block to be overwritten once committed to disk.
   var SCANNER_INTERVAL = 100;  // time between incremental file scans in milliseconds
 
-  // We assume blocks keys are hex hashes
-  var key_regexp = /[a-fA-F0-9]+/;
+  var key_regexp = /[a-fA-F0-9]+/;  // We assume blocks keys are hex hashes
   var uid_regexp = /[a-zA-Z0-9][a-zA-Z0-9_\.\-]*/;
   var file_regexp = /([a-zA-Z0-9][a-zA-Z0-9_\.\-]*)\$([a-fA-F0-9]+)/;  // matches uid and key.
 
@@ -106,6 +105,20 @@
 	  fs.writeFile(path + '/' + uid + '$' + key, block, function writeDone(err) {
 	    if (err)
 	      $quota[uid] -= block.length;
+	    callback(err);
+	  });
+	});
+      }
+      // Remove a block.
+      this.remove = function(key, callback) {
+	if (!key_regexp.test(key))
+	  return callback("Invalid key: " + key);
+	fs.stat(path + '/' + uid + '$' + key, function statResult(err, stats) {
+          if (err)
+            return callback(err);
+	  fs.unlink(path + '/' + uid + '$' + key, function deleteDone(err) {
+	    if (!err)
+	      $quota[uid] -= stats.size;
 	    callback(err);
 	  });
 	});

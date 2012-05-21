@@ -91,3 +91,32 @@ exports.testGetStoreQuotaAndOverwrite = function(test) {
     });
   });
 };
+
+exports.testStoreDelete = function(test) {
+  var bs = new blockstore.BlockStore(TESTDATA_PATH, 
+  function Loaded(err) {
+    var newdata = 'This is some new data';
+    var accessor = new bs.accessor('usera');
+    async.waterfall([
+      function(callback) {
+        accessor.store('abcd', newdata, callback);
+      },   
+      function(callback) {
+        accessor.get('abcd', callback);
+      },
+      function(data, callback) {
+        test.deepEqual(data.toString(), newdata);
+        accessor.remove('abcd', callback);
+      },
+      function(callback) {
+        accessor.get('abcd', function(err) {
+          test.ok(err);  // Expect File Not Found error.
+          callback();
+        });
+      },
+    ], function(err, quota) {
+      test.ok(!err);
+      test.done();
+    });
+  });
+};
