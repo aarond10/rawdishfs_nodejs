@@ -113,7 +113,7 @@
             } else
 	      return callback("Refusing to overwrite existing block: " + key);
 	  }
-	  fs.writeFile(path + '/' + uid + '$' + key, block, function writeDone(err) {
+	  fs.writeFile(path + '/' + uid + '$' + key, block, 'binary', function writeDone(err) {
 	    if (err)
 	      $quota[uid] -= block.length;
 	    callback(err, filesize_change);
@@ -188,7 +188,7 @@
 	while (filename !== undefined && !file_regexp.test(filename)) 
 	  filename = curFiles.shift();
 	if (filename) {
-	  fs.readFile(path + '/' + filename, function ReadFile(err, data) {
+	  fs.readFile(path + '/' + filename, 'binary', function ReadFile(err, data) {
 	    var match = file_regexp.exec(filename);
 	    handle = setTimeout(RunScan, SCANNER_INTERVAL);
 	    callback(err, match[2], data, match[1]);

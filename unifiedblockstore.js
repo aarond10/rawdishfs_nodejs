@@ -76,7 +76,6 @@
           accessor.quota(callback);
         },
         function GetQuota(quota, callback) {
-          console.log("adding quota", quota);
           $quota += quota;
           accessor.size(callback);
         },
